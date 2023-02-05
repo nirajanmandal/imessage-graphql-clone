@@ -8,18 +8,31 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import typeDefs from './graphql/typeDefs';
 import resolvers from './graphql/resolvers';
+import * as dotenv from 'dotenv'
+import { getSession } from 'next-auth/react'
+import { GraphQLContext, Session } from './util/types';
+import { PrismaClient } from '@prisma/client';
 
 interface MyContext {
     token?: string;
 }
 
 async function main() {
+    dotenv.config()
     const app = express();
     const httpServer = http.createServer(app);
     const schema = makeExecutableSchema({
         typeDefs,
         resolvers,
     })
+
+    const corsOptions = {
+        origin: process.env.CLIENT_ORIGIN,
+        credentials: true,
+    }
+    
+    const prisma = new PrismaClient()
+    
     const server = new ApolloServer<MyContext>({
         schema,
         csrfPrevention: true,
@@ -30,10 +43,13 @@ async function main() {
 
     app.use(
         '/',
-        cors<cors.CorsRequest>(),
+        cors<cors.CorsRequest>(corsOptions),
         bodyParser.json(),
         expressMiddleware(server, {
-            context: async ({ req }) => ({ token: req.headers.token }),
+            context: async ({ req }): Promise<GraphQLContext> => {
+                const session = await getSession({ req })
+                return { session: session as Session, prisma }
+            },
         }),
     );
 
@@ -41,4 +57,4 @@ async function main() {
     console.log(`🚀 Server ready at http://localhost:4000/`);
 }
 
-main().catch((err) => console.log('error:::::',err))
+main().catch((err) => console.log('error::', err))
